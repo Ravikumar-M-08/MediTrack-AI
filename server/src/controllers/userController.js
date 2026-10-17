@@ -370,22 +370,82 @@ export const getMyPatients = asyncHandler(async (req, res) => {
 // @access  Private
 export const getDoctorsList = asyncHandler(async (req, res) => {
   const doctors = await User.find({ role: "DOCTOR" })
-    .select("name email department specialization") // Add relevant fields
+    .select("name email createdAt")
     .sort({ name: 1 });
 
-  res.status(200).json(doctors);
+  const doctorIds = doctors.map((d) => d._id);
+  const profiles = await DoctorProfile.find({ user: { $in: doctorIds } }).select(
+    "user specialization contactNumber"
+  );
+
+  const profileMap = {};
+  profiles.forEach((p) => {
+    profileMap[p.user.toString()] = p;
+  });
+
+  const result = doctors.map((d) => ({
+    _id: d._id,
+    name: d.name,
+    email: d.email,
+    specialization:
+      profileMap[d._id.toString()]?.specialization || "General Physician",
+  }));
+
+  res.status(200).json(result);
 });
 
-// @desc    Get all patients (for appointment creation)
+// @desc    Get all patients (for appointment creation / admin panel)
 // @route   GET /api/users/patients
-// @access  Private/Doctor
+// @access  Private
 export const getPatientsList = asyncHandler(async (req, res) => {
-  // If you want ALL patients in the system:
   const patients = await User.find({ role: "PATIENT" })
-    .select("name email contactNumber")
+    .select("name email createdAt")
     .sort({ createdAt: -1 });
 
-  res.status(200).json(patients);
+  const patientIds = patients.map((p) => p._id);
+  const profiles = await PatientProfile.find({
+    user: { $in: patientIds },
+  }).select("user medicalRecordNumber updatedAt");
+
+  const profileMap = {};
+  profiles.forEach((p) => {
+    profileMap[p.user.toString()] = p;
+  });
+
+  const result = patients.map((p) => {
+    const profile = profileMap[p._id.toString()];
+    return {
+      _id: p._id,
+      name: p.name,
+      email: p.email,
+      mrn: profile?.medicalRecordNumber || "N/A",
+      lastVisit: profile?.updatedAt || p.createdAt,
+    };
+  });
+
+  res.status(200).json(result);
+});
+
+// @desc    Delete a doctor or patient (and their profile)
+// @route   DELETE /api/users/:id
+// @access  Private/Admin
+export const deleteUser = asyncHandler(async (req, res) => {
+  const { id } = req.params;
+
+  const user = await User.findById(id);
+  if (!user) {
+    res.status(404);
+    throw new Error("User not found");
+  }
+
+  if (user.role === "DOCTOR") {
+    await DoctorProfile.deleteOne({ user: id });
+  } else if (user.role === "PATIENT") {
+    await PatientProfile.deleteOne({ user: id });
+  }
+
+  await User.findByIdAndDelete(id);
+  res.status(200).json({ message: "User deleted successfully" });
 });
 
 // @desc    Get patient's full medical status (Doctor, Appt, Meds)
@@ -550,16 +610,11 @@ export const getDoctorDashboard = asyncHandler(async (req, res) => {
     status: "Scheduled",
     appointmentDate: { $gte: now },
   })
-    .sort({ appointmentDate: 1, appointmentTime: 1 })
+    .sort({ appointmentDate: 1 })
     .limit(6)
     .populate({
       path: "patient",
       select: "name email",
-      populate: {
-        path: "patientProfile", // Ensure you have a virtual or ref named this in User model,
-        model: "PatientProfile", // or we manually fetch below if not linked
-        select: "age gender currentStatus",
-      },
     });
 
   // 3. Statistical Aggregation

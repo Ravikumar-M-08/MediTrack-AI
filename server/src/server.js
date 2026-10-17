@@ -59,7 +59,7 @@ app.get("/health", (req, res) => {
 
 app.use(errorHandler);
 
-// initCronJobs();
+initCronJobs();
 
 const PORT = process.env.PORT || 5000;
 

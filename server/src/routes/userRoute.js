@@ -11,9 +11,10 @@ import {
   logoutUser,
   registerUser,
   updateUserProfile,
-  getDoctorDashboard
+  getDoctorDashboard,
+  deleteUser,
 } from "../controllers/userController.js";
-import { doctor, protect } from "../middleware/authMiddleware.js";
+import { admin, doctor, protect } from "../middleware/authMiddleware.js";
 const router = express.Router();
 
 router.post("/", registerUser);
@@ -31,5 +32,6 @@ router.get("/patients", protect, getPatientsList);
 router.get("/doctors", protect, getDoctorsList);
 router.post("/add-patient", protect, addPatient);
 router.put("/assign-patient", protect, assignPatient);
+router.delete("/:id", protect, admin, deleteUser);
 
 export default router;

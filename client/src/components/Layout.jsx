@@ -80,7 +80,7 @@ const Layout = () => {
           },
           {
             name: "My Reports",
-            path: "/reports",
+            path: "/doctor-reports",
             icon: <ClipboardList size={20} />,
           },
           {

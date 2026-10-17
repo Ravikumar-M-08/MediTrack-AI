@@ -21,6 +21,9 @@ import PatientDashboard from "./pages/PatientDashboard";
 import DoctorDashboard from "./pages/DoctorDashboard";
 import PatientDetails from "./pages/PatientDetails";
 import PatientChatbot from "./components/PatientChatbot"; // Import the chatbot component
+import AddDoctor from "./pages/AddDoctor";
+import DoctorReports from "./pages/DoctorReports";
+import AppointmentDetails from "./pages/AppointmentDetails";
 
 const NotFound = () => (
   <div className="flex h-screen flex-col items-center justify-center bg-base-200">
@@ -112,6 +115,7 @@ function App() {
         <Route element={<ProtectedRoute allowedRoles={["ADMIN"]} />}>
           <Route path="/admin-dashboard" element={<AdminDashboard />} />
           <Route path="/add-patient" element={<AddPatient />} />
+          <Route path="/admin/add-doctor" element={<AddDoctor />} />
         </Route>
 
         {/* --- DOCTOR & ADMIN SHARED ACCESS --- */}
@@ -126,6 +130,8 @@ function App() {
           <Route path="/clinical-visit/:id" element={<ClinicalVisit />} />
           <Route path="/doctor-profile" element={<Profile />} />
           <Route path="/patient-details/:id" element={<PatientDetails />} />
+          <Route path="/doctor-reports" element={<DoctorReports />} />
+          <Route path="/appointment-details/:id" element={<AppointmentDetails />} />
         </Route>
 
         {/* --- PATIENT ONLY ROUTES --- */}

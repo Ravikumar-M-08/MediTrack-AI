@@ -280,7 +280,7 @@ const Appointments = () => {
                           ) : (
                             <li>
                               <button
-                                onClick={() => navigate(`/summary/${app._id}`)}
+                                onClick={() => navigate(`/appointment-details/${app._id}`)}
                                 className="text-sm font-bold py-3 hover:bg-primary/10"
                               >
                                 <Eye size={18} /> View Summary
@@ -344,7 +344,7 @@ const Appointments = () => {
                   </>
                 ) : (
                   <button
-                    onClick={() => navigate(`/summary/${app._id}`)}
+                    onClick={() => navigate(`/appointment-details/${app._id}`)}
                     className="btn btn-sm btn-outline w-full rounded-lg font-bold text-primary"
                   >
                     View Summary

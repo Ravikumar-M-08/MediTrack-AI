@@ -1,4 +1,4 @@
-import React, { useState } from "react";
+import React, { useState, useEffect } from "react";
 import {
   Users,
   UserCog,
@@ -7,32 +7,74 @@ import {
   Trash2,
   ShieldCheck,
 } from "lucide-react";
-import { useNavigate } from "react-router-dom";
+import { useNavigate, useSearchParams } from "react-router-dom";
+import api from "../api/axios";
+import toast from "react-hot-toast";
 
 const AdminDashboard = () => {
   const navigate = useNavigate();
-  const [activeTab, setActiveTab] = useState("DOCTORS");
+  const [searchParams, setSearchParams] = useSearchParams();
 
-  // Mock Data
-  const doctors = [
-    {
-      id: 1,
-      name: "Dr. Sarah Jenkins",
-      email: "s.jenkins@hospital.com",
-      dept: "Cardiology",
-    },
-    {
-      id: 2,
-      name: "Dr. Mark Wilson",
-      email: "m.wilson@hospital.com",
-      dept: "Neurology",
-    },
-  ];
+  // Read initial tab from URL (?tab=patients / ?tab=doctors), default to DOCTORS
+  const tabParam = searchParams.get("tab");
+  const initialTab = tabParam === "patients" ? "PATIENTS" : "DOCTORS";
 
-  const patients = [
-    { id: 1, name: "John Doe", mrn: "MRN-8821", lastVisit: "2024-02-15" },
-    { id: 2, name: "Alice Cooper", mrn: "MRN-3301", lastVisit: "2024-02-28" },
-  ];
+  const [activeTab, setActiveTab] = useState(initialTab);
+  const [doctors, setDoctors] = useState([]);
+  const [patients, setPatients] = useState([]);
+  const [loading, setLoading] = useState(true);
+  const [searchTerm, setSearchTerm] = useState("");
+
+  // Keep activeTab in sync whenever the URL's ?tab= changes (sidebar nav)
+  useEffect(() => {
+    const t = searchParams.get("tab");
+    setActiveTab(t === "patients" ? "PATIENTS" : "DOCTORS");
+  }, [searchParams]);
+
+  // Update the URL when a tab button inside the page is clicked
+  const handleTabChange = (tab) => {
+    setActiveTab(tab);
+    setSearchParams(tab === "PATIENTS" ? { tab: "patients" } : { tab: "doctors" });
+  };
+
+  const fetchData = async () => {
+    setLoading(true);
+    try {
+      const [docsRes, patientsRes] = await Promise.all([
+        api.get("/users/doctors"),
+        api.get("/users/patients"),
+      ]);
+      setDoctors(docsRes.data);
+      setPatients(patientsRes.data);
+    } catch (err) {
+      toast.error("Failed to load admin data");
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  useEffect(() => {
+    fetchData();
+  }, []);
+
+  const handleDelete = async (e, id, name) => {
+    e.stopPropagation();
+    if (!window.confirm(`Delete ${name}? This cannot be undone.`)) return;
+    try {
+      await api.delete(`/users/${id}`);
+      toast.success("Deleted successfully");
+      fetchData();
+    } catch (err) {
+      toast.error(err.response?.data?.message || "Delete failed");
+    }
+  };
+
+  const filteredDoctors = doctors.filter((d) =>
+    d.name?.toLowerCase().includes(searchTerm.toLowerCase())
+  );
+  const filteredPatients = patients.filter((p) =>
+    p.name?.toLowerCase().includes(searchTerm.toLowerCase())
+  );
 
   return (
     <div className="p-6 bg-base-200 min-h-screen">
@@ -49,11 +91,14 @@ const AdminDashboard = () => {
             <h1 className="text-3xl font-black">System Control</h1>
           </div>
           <button
-            onClick={() => navigate("/add-patient")}
-            className="btn btn-primary rounded-2xl gap-2 font-black"
-          >
-            <Plus size={20} /> Add New Patient
-          </button>
+              onClick={() =>
+                navigate(activeTab === "DOCTORS" ? "/admin/add-doctor" : "/add-patient")
+              }
+              className="btn btn-primary rounded-2xl gap-2 font-black"
+            >
+              <Plus size={20} />
+              {activeTab === "DOCTORS" ? "Add New Doctor" : "Add New Patient"}
+            </button>
         </div>
 
         {/* Tabs */}
@@ -64,7 +109,7 @@ const AdminDashboard = () => {
                 ? "tab-active !bg-primary !text-white"
                 : ""
             }`}
-            onClick={() => setActiveTab("DOCTORS")}
+            onClick={() => handleTabChange("DOCTORS")}
           >
             <UserCog size={18} /> Staff (Doctors)
           </button>
@@ -74,7 +119,7 @@ const AdminDashboard = () => {
                 ? "tab-active !bg-primary !text-white"
                 : ""
             }`}
-            onClick={() => setActiveTab("PATIENTS")}
+            onClick={() => handleTabChange("PATIENTS")}
           >
             <Users size={18} /> Patients
           </button>
@@ -97,6 +142,8 @@ const AdminDashboard = () => {
                 type="text"
                 placeholder="Search records..."
                 className="input input-sm bg-base-200 rounded-lg pl-10"
+                value={searchTerm}
+                onChange={(e) => setSearchTerm(e.target.value)}
               />
             </div>
           </div>
@@ -113,39 +160,72 @@ const AdminDashboard = () => {
                 </tr>
               </thead>
               <tbody>
-                {activeTab === "DOCTORS"
-                  ? doctors.map((doc) => (
-                      <tr key={doc.id} className="hover:bg-base-200/30">
+                {loading ? (
+                  <tr>
+                    <td colSpan="3" className="text-center py-16">
+                      <span className="loading loading-spinner loading-lg text-primary"></span>
+                    </td>
+                  </tr>
+                ) : activeTab === "DOCTORS" ? (
+                  filteredDoctors.length === 0 ? (
+                    <tr>
+                      <td colSpan="3" className="text-center py-16 opacity-40 italic">
+                        No doctors found.
+                      </td>
+                    </tr>
+                  ) : (
+                    filteredDoctors.map((doc) => (
+                      <tr key={doc._id} className="hover:bg-base-200/30">
                         <td>
                           <div className="font-bold">{doc.name}</div>
                           <div className="text-[10px] opacity-50 font-black">
-                            {doc.dept}
+                            {doc.specialization}
                           </div>
                         </td>
                         <td className="text-sm">{doc.email}</td>
                         <td className="text-right">
-                          <button className="btn btn-ghost btn-xs text-error">
+                          <button
+                            onClick={(e) => handleDelete(e, doc._id, doc.name)}
+                            className="btn btn-ghost btn-xs text-error"
+                          >
                             <Trash2 size={16} />
                           </button>
                         </td>
                       </tr>
                     ))
-                  : patients.map((pat) => (
-                      <tr key={pat.id} className="hover:bg-base-200/30">
-                        <td>
-                          <div className="font-bold">{pat.name}</div>
-                          <div className="text-[10px] opacity-50 font-black">
-                            {pat.mrn}
-                          </div>
-                        </td>
-                        <td className="text-sm">Last Seen: {pat.lastVisit}</td>
-                        <td className="text-right">
-                          <button className="btn btn-ghost btn-xs text-error">
-                            <Trash2 size={16} />
-                          </button>
-                        </td>
-                      </tr>
-                    ))}
+                  )
+                ) : filteredPatients.length === 0 ? (
+                  <tr>
+                    <td colSpan="3" className="text-center py-16 opacity-40 italic">
+                      No patients found.
+                    </td>
+                  </tr>
+                ) : (
+                  filteredPatients.map((pat) => (
+                    <tr key={pat._id} className="hover:bg-base-200/30">
+                      <td>
+                        <div className="font-bold">{pat.name}</div>
+                        <div className="text-[10px] opacity-50 font-black">
+                          {pat.mrn}
+                        </div>
+                      </td>
+                      <td className="text-sm">
+                        Last Seen:{" "}
+                        {pat.lastVisit
+                          ? new Date(pat.lastVisit).toLocaleDateString()
+                          : "N/A"}
+                      </td>
+                      <td className="text-right">
+                        <button
+                          onClick={(e) => handleDelete(e, pat._id, pat.name)}
+                          className="btn btn-ghost btn-xs text-error"
+                        >
+                          <Trash2 size={16} />
+                        </button>
+                      </td>
+                    </tr>
+                  ))
+                )}
               </tbody>
             </table>
           </div>

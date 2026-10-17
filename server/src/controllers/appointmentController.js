@@ -294,8 +294,8 @@ export const cancelAppointment = async (req, res) => {
 
     // Authorization check: Only the patient or doctor involved can cancel
     if (
-      appointment.patientId.toString() !== req.user._id.toString() &&
-      appointment.doctorId.toString() !== req.user._id.toString()
+      appointment.patient.toString() !== req.user._id.toString() &&
+      appointment.doctor.toString() !== req.user._id.toString()
     ) {
       return res
         .status(401)

@@ -1,55 +1,45 @@
-import twilio from 'twilio';
+import twilio from "twilio";
 
-const accountSid = process.env.TWILIo_ACCOUNT_SID; 
-const authToken = process.env.TWILIO_AUTH_TOKEN; 
-const twilioNumber = process.env.TWILIO_PHONE_NUMBER; 
+let client = null;
 
-const client = twilio(accountSid, authToken);
+// Create the client lazily so dotenv has already loaded
+const getClient = () => {
+  if (client) return client;
 
-/**
- * Formats a 10-digit number to E.164 (+91...) or validates existing format
- */
-const formatPhoneNumber = (number) => {
-  // Remove all non-numeric characters
-  const cleaned = ('' + number).replace(/\D/g, '');
-
-  // If it's a 10-digit number, add +91 (India)
-  if (cleaned.length === 10) {
-    return `+91${cleaned}`;
+  const { TWILIO_ACCOUNT_SID, TWILIO_AUTH_TOKEN } = process.env;
+  if (!TWILIO_ACCOUNT_SID || !TWILIO_AUTH_TOKEN) {
+    throw new Error("Twilio credentials missing in .env");
   }
-  
-  // If it already has a plus and correct length, return as is
-  if (number.startsWith('+') && (cleaned.length >= 11 && cleaned.length <= 15)) {
+  client = twilio(TWILIO_ACCOUNT_SID, TWILIO_AUTH_TOKEN);
+  return client;
+};
+
+const formatPhoneNumber = (number) => {
+  const cleaned = ("" + number).replace(/\D/g, "");
+  if (cleaned.length === 10) return `+91${cleaned}`;
+  if (String(number).startsWith("+") && cleaned.length >= 11 && cleaned.length <= 15) {
     return number;
   }
-
-  // Otherwise, it's invalid
   return null;
 };
 
 export const sendReminderSMS = async (phoneNumber, patientName, time) => {
   const formattedNumber = formatPhoneNumber(phoneNumber);
-
-  // Skip if the number is invalid
   if (!formattedNumber) {
-    console.warn(`⚠️ Skipping: ${patientName} has an invalid phone number (${phoneNumber})`);
+    console.warn(`⚠️ Skipping ${patientName}: invalid phone (${phoneNumber})`);
     return { success: false, error: "Invalid phone number format" };
   }
 
   try {
-    // Friendly and Caring Bilingual Message
-    const messageBody = `Hi ${patientName}, you have an appointment tomorrow at ${time}. We look forward to seeing you! - Medicare AI`;
-    console.log(phoneNumber);
-    const response = await client.messages.create({
-      body: messageBody,
-      from: twilioNumber,
-      to: formattedNumber
+    const response = await getClient().messages.create({
+      body: `Hi ${patientName}, you have an appointment tomorrow at ${time}. We look forward to seeing you! - Medicare AI`,
+      from: process.env.TWILIO_PHONE_NUMBER,
+      to: formattedNumber,
     });
-
-    console.log(`SMS Sent to ${patientName} (${formattedNumber})!`);
+    console.log(`✅ SMS sent to ${patientName} (${formattedNumber}) sid=${response.sid}`);
     return { success: true, sid: response.sid };
   } catch (error) {
-    console.error(`❌ Twilio Error for ${patientName}:`, error.message);
+    console.error(`❌ Twilio error for ${patientName}:`, error.message);
     return { success: false, error: error.message };
   }
 };

@@ -1,57 +1,64 @@
 import cron from "node-cron";
 import Appointment from "../models/Appointment.js";
-import { sendReminderSMS } from "./smsService.js";
 import PatientProfile from "../models/PatientProfile.js";
+import { sendReminderSMS } from "./smsService.js";
 
-// REUSABLE LOGIC
 export const sendAllReminders = async () => {
   const tomorrowStart = new Date();
-  tomorrowStart.setHours(24, 0, 0, 0);
-  const tomorrowEnd = new Date();
-  tomorrowEnd.setHours(47, 59, 59, 999);
+  tomorrowStart.setDate(tomorrowStart.getDate() + 1);
+  tomorrowStart.setHours(0, 0, 0, 0);
 
-  // 1. Get all appointments for tomorrow
+  const tomorrowEnd = new Date(tomorrowStart);
+  tomorrowEnd.setHours(23, 59, 59, 999);
+
   const appointments = await Appointment.find({
+    status: { $in: ["Scheduled", "Confirmed"] }, // skip cancelled/completed
     appointmentDate: { $gte: tomorrowStart, $lte: tomorrowEnd },
-  }).populate("patient"); // This joins the USER schema
+  }).populate("patient", "name");
+
+  console.log(`📋 Reminder sweep: ${appointments.length} appointment(s) tomorrow`);
 
   for (const appt of appointments) {
-    const userId = appt.patient._id;
+    if (!appt.patient) continue;
 
-    // 2. Now find the PatientProfile linked to this User ID
-    const profile = await PatientProfile.findOne({ user: userId });
-
-    if (profile && profile.contactNumber) {
-      const patientName = appt.patient.name; // From the User join
-      const time = new Date(appt.appointmentDate)
-        .toLocaleString("en-IN", {
-          timeZone: "Asia/Kolkata",
-          day: "2-digit",
-          month: "short",
-          year: "numeric",
-          hour: "2-digit",
-          minute: "2-digit",
-          hour12: true,
-        })
-        .replace(",", " at");
-      await sendReminderSMS(profile.contactNumber, patientName, time);
-    } else {
-      console.log(`No profile or number found for ${appt.patient.name}`);
+    const profile = await PatientProfile.findOne({ user: appt.patient._id });
+    if (!profile?.contactNumber) {
+      console.log(`No contact number for ${appt.patient.name}`);
+      continue;
     }
+
+    const time = new Date(appt.appointmentDate)
+      .toLocaleString("en-IN", {
+        timeZone: "Asia/Kolkata",
+        day: "2-digit",
+        month: "short",
+        year: "numeric",
+        hour: "2-digit",
+        minute: "2-digit",
+        hour12: true,
+      })
+      .replace(",", " at");
+
+    await sendReminderSMS(profile.contactNumber, appt.patient.name, time);
   }
 };
 
-// INITIALIZATION FUNCTION
 const initCronJobs = () => {
-  // 1. Run IMMEDIATELY on app start for testing/demo
-  console.log("🚀 Server started: Initial reminder sweep...");
-  sendAllReminders();
+  // Daily at 9:00 AM IST
+  cron.schedule(
+    "0 9 * * *",
+    () => {
+      console.log("⏰ 9AM reminder run started");
+      sendAllReminders().catch((e) => console.error("Reminder run failed:", e));
+    },
+    { timezone: "Asia/Kolkata" }
+  );
 
-  // 2. Schedule to run DAILY at 9:00 AM
-  cron.schedule("0 9 * * *", () => {
-    console.log("Scheduled 9AM run started...");
-    sendAllReminders();
-  });
+  // Optional: run once at startup for testing (set SEND_REMINDERS_ON_START=true in .env)
+  if (process.env.SEND_REMINDERS_ON_START === "true") {
+    console.log("🚀 Startup reminder sweep...");
+    sendAllReminders().catch((e) => console.error("Startup sweep failed:", e));
+  }
 };
 
 export default initCronJobs;

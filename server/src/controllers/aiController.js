@@ -12,6 +12,10 @@ const groq = process.env.GROQ_API_KEY
   ? new Groq({ apiKey: process.env.GROQ_API_KEY })
   : null;
 
+// Single source of truth for model names — override via .env if Groq changes availability again
+const GROQ_CHAT_MODEL = process.env.GROQ_CHAT_MODEL || "openai/gpt-oss-20b";
+const GROQ_SUMMARY_MODEL = process.env.GROQ_SUMMARY_MODEL || "openai/gpt-oss-120b";
+
 export const getPatientFullDetails = asyncHandler(async (req, res) => {
   const { patientId } = req.params;
 
@@ -80,7 +84,6 @@ export const getPatientAiSummary = asyncHandler(async (req, res) => {
 
   const { patientId } = req.params;
 
-  // We only fetch the minimal data needed for the prompt
   const [patientUser, appointments, prescriptions, logs] = await Promise.all([
     User.findById(patientId).select("name"),
     Appointment.find({ patient: patientId })
@@ -96,8 +99,6 @@ export const getPatientAiSummary = asyncHandler(async (req, res) => {
   if (!patientUser)
     return res.status(404).json({ message: "Patient not found" });
 
-  // Recalculate adherence for AI context (or pass from frontend to save DB hits)
-  // Simplified adherence calculation for context
   const totalTakenDoses = logs.filter((l) => l.status === "Taken").length;
 
   const clinicalHistory = appointments
@@ -128,7 +129,7 @@ export const getPatientAiSummary = asyncHandler(async (req, res) => {
         },
         { role: "user", content: prompt },
       ],
-      model: "llama-3.3-70b-versatile",
+      model: GROQ_SUMMARY_MODEL,
       temperature: 0.2,
       max_tokens: 300,
     });
@@ -137,7 +138,8 @@ export const getPatientAiSummary = asyncHandler(async (req, res) => {
       aiSummary: chat.choices[0]?.message?.content || "Analysis complete.",
     });
   } catch (err) {
-    console.error("Groq Error:", err);
+    console.error("❌ Groq API Error (ai-summary):", err.message);
+    console.error("Full error:", err);
     res
       .status(500)
       .json({ aiSummary: "AI briefing service currently unavailable." });
@@ -153,6 +155,7 @@ export const handlePatientQuery = asyncHandler(async (req, res) => {
 
   // 1. Destructure 'history' from the body
   const { query, history } = req.body;
+  const safeHistory = Array.isArray(history) ? history : [];
   const { patientId } = req.params;
 
   const [patientUser, appointments, prescriptions] = await Promise.all([
@@ -188,16 +191,15 @@ export const handlePatientQuery = asyncHandler(async (req, res) => {
   `;
 
   // 2. Build the message array with history
-  // Format: [{role: "user", content: "..."}, {role: "assistant", content: "..."}]
   const chatMessages = [
     { role: "system", content: systemPrompt },
-    ...history, // This inserts the previous back-and-forth
-    { role: "user", content: query }, // This is the new message (e.g., "Yes")
+    ...safeHistory,
+    { role: "user", content: query },
   ];
 
   try {
     const response = await groq.chat.completions.create({
-      model: "llama-3.3-70b-versatile",
+      model: GROQ_CHAT_MODEL,
       messages: chatMessages,
       temperature: 0.4,
     });
@@ -206,6 +208,8 @@ export const handlePatientQuery = asyncHandler(async (req, res) => {
       reply: response.choices[0]?.message?.content,
     });
   } catch (error) {
+    console.error("❌ Groq API Error (ai-chat):", error.message);
+    console.error("Full error:", error);
     res.status(500).json({ reply: "I lost my train of thought. Try again?" });
   }
 });
